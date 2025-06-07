@@ -32,7 +32,6 @@
 
     <script type="module">
         const weatherPopups = [];
-        const weatherAPIKey = '25c2d51c578efe6bd9fd0753a565d162'; // Replace with your API key
         const map = L.map('map').setView([45.8326, 6.8652], 9); // Chamonix area
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
@@ -113,20 +112,6 @@
                     addWaypoint(name, lat, lon);
                 }
             });
-
-
-            // const lat = e.latlng.lat;
-            // const lon = e.latlng.lng;
-
-            // const popup = L.popup()
-            //     .setLatLng([lat, lon])
-            //     .setContent(`
-            //         <div>
-            //             <strong>Add waypoint?</strong><br/>
-            //             <button onclick="addWaypoint(${lat}, ${lon})">Yes</button>
-            //         </div>
-            //     `)
-            //     .openOn(map);
         });
 
         window.addWaypoint = function (lat, lon) {
@@ -139,8 +124,8 @@
         }
 
         function addWaypoint(name, lat, lon) {
-            const currentURL = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${weatherAPIKey}`;
-            const forecastURL = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${weatherAPIKey}`;
+            const currentURL = `https://l9r7k10f6h.execute-api.us-east-1.amazonaws.com/default/getWeatherData?lat=${lat}&lon=${lon}&type=weather`;
+            const forecastURL = `https://l9r7k10f6h.execute-api.us-east-1.amazonaws.com/default/getWeatherData?lat=${lat}&lon=${lon}&type=forecast`;
 
             Promise.all([
                 fetch(currentURL).then(res => res.json()),
