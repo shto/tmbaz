@@ -83,18 +83,50 @@
         });
 
         map.on('click', function (e) {
+
             const lat = e.latlng.lat;
             const lon = e.latlng.lng;
 
-            const popup = L.popup()
+            // Create input element
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.placeholder = 'give this a name';
+            input.style.width = '140px';
+
+            // Create popup with input
+            const popup = L.popup({
+                closeOnClick: true,
+                autoClose: true
+            })
                 .setLatLng([lat, lon])
-                .setContent(`
-                    <div>
-                        <strong>Add waypoint?</strong><br/>
-                        <button onclick="addWaypoint(${lat}, ${lon})">Yes</button>
-                    </div>
-                `)
+                .setContent(input)
                 .openOn(map);
+
+            // Autofocus the input after popup is added
+            setTimeout(() => input.focus(), 100);
+
+            // Handle Enter key press
+            input.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter' && input.value.trim()) {
+                    const name = input.value.trim();
+                    map.closePopup();
+                    addWaypoint(name, lat, lon);
+                }
+            });
+
+
+            // const lat = e.latlng.lat;
+            // const lon = e.latlng.lng;
+
+            // const popup = L.popup()
+            //     .setLatLng([lat, lon])
+            //     .setContent(`
+            //         <div>
+            //             <strong>Add waypoint?</strong><br/>
+            //             <button onclick="addWaypoint(${lat}, ${lon})">Yes</button>
+            //         </div>
+            //     `)
+            //     .openOn(map);
         });
 
         window.addWaypoint = function (lat, lon) {
@@ -166,7 +198,7 @@
                 .addTo(map);
 
             weatherPopups.push(popup)
-            allWaypoints.push({name: name, lat: lat, lon: lon});
+            allWaypoints.push({ name: name, lat: lat, lon: lon });
             updateURLWithWaypoints(allWaypoints)
         }
 
