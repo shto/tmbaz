@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Tour du Mont Blanc Map + Weather</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-gpx/2.1.2/gpx.min.js" defer></script>
+    <style>
+        #map {
+            height: 100vh;
+        }
+
+        .weather-popup {
+            font-size: 12px;
+            max-width: 120px;
+            text-align: center;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <script type="module">
+        const weatherPopups = [];
+        const weatherAPIKey = '25c2d51c578efe6bd9fd0753a565d162'; // Replace with your API key
+        const map = L.map('map').setView([45.8326, 6.8652], 9); // Chamonix area
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Load GPX track
+        const gpx = 'https://gist.githubusercontent.com/shto/1c1d4f7d9e28d7a0a5d881929d90797f/raw/bb29aa1aa54a923452391d5cb2a39dc5add8b684/tmb.gpx';
+        new L.GPX(gpx, {
+            async: true,
+            marker_options: {
+                startIconUrl: null,
+                endIconUrl: null,
+                shadowUrl: null
+            }
+        }).on('loaded', function (e) {
+            map.fitBounds(e.target.getBounds());
+        }).on('error', function (err) {
+            console.log(`error loading gpx: ${err}`)
+        }).addTo(map);
+
+        // Starting waypoint
+        var allWaypoints = [];
+        var defaultWaypoints = [
+            { name: "Les Houches", lat: 45.8896, lon: 6.7986 },
+        ];
+
+        const savedWaypoints = parseWaypointsFromURL();
+        if (savedWaypoints.length > 0) {
+            defaultWaypoints = savedWaypoints
+        }
+
+        defaultWaypoints.forEach(point => {
+            const lat = point.lat;
+            const lon = point.lon;
+
+            addWaypoint(point.name, lat, lon)
+        });
+
+        map.on('zoomend', () => {
+            const zoom = map.getZoom();
+            weatherPopups.forEach(popup => {
+                if (zoom >= 11) {
+                    map.addLayer(popup);
+                } else {
+                    map.removeLayer(popup);
+                }
+            });
+        });
+
+        map.on('click', function (e) {
+            const lat = e.latlng.lat;
+            const lon = e.latlng.lng;
+
+            const popup = L.popup()
+                .setLatLng([lat, lon])
+                .setContent(`
+                    <div>
+                        <strong>Add waypoint?</strong><br/>
+                        <button onclick="addWaypoint(${lat}, ${lon})">Yes</button>
+                    </div>
+                `)
+                .openOn(map);
+        });
+
+        window.addWaypoint = function (lat, lon) {
+            map.closePopup(); // close the "Add" popup
+
+            const name = prompt("Enter a name for this waypoint:");
+            if (!name) return; // cancel if user presses "Cancel"
+
+            addWaypoint(name, lat, lon)
+        }
+
+        function addWaypoint(name, lat, lon) {
+            const currentURL = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${weatherAPIKey}`;
+            const forecastURL = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&appid=${weatherAPIKey}`;
+
+            Promise.all([
+                fetch(currentURL).then(res => res.json()),
+                fetch(forecastURL).then(res => res.json())
+            ])
+                .then(([current, forecast]) => {
+                    const nowTemp = current.main.temp;
+                    const nowDesc = current.weather[0].description;
+                    const nowIcon = current.weather[0].icon;
+
+                    // Find tonight's forecast: closest to 21:00 local time
+                    const tonightEntry = forecast.list.find(entry => {
+                        const hour = new Date(entry.dt * 1000).getHours();
+                        return hour === 20;
+                    });
+
+                    let tonightTemp = 'N/A';
+                    let tonightDesc = '';
+                    let tonightIcon = '';
+
+                    if (tonightEntry) {
+                        tonightTemp = tonightEntry.main.temp;
+                        tonightDesc = tonightEntry.weather[0].description;
+                        tonightIcon = tonightEntry.weather[0].icon;
+                    }
+
+                    addPopup(name, nowIcon, nowDesc, nowTemp, tonightIcon, tonightDesc, tonightTemp, lat, lon);
+                })
+                .catch(err => console.error('Weather fetch error:', err));
+
+        }
+
+        function addPopup(name, nowIcon, nowDesc, nowTemp, tonightIcon, tonightDesc, tonightTemp, lat, lon) {
+            const popupContent = `
+                    <div class="weather-popup">
+                    <strong>${name}</strong><br/><br/>
+                    <u>Now</u><br/>
+                    <img src="https://openweathermap.org/img/wn/${nowIcon}@2x.png" /><br/>
+                    ${nowDesc}<br/>
+                    ${nowTemp} °C<br/><br/>
+                    <u>Tonight (21:00)</u><br/>
+                    ${tonightIcon ? `<img src="https://openweathermap.org/img/wn/${tonightIcon}@2x.png" />` : ''}
+                    ${tonightDesc}<br/>
+                    ${tonightTemp} °C
+                    </div>
+                `;
+
+            let popup = L.popup({
+                closeOnClick: false,
+                autoClose: false,
+                className: 'weather-direct-popup'
+            })
+                .setLatLng([lat, lon])
+                .setContent(popupContent)
+                .addTo(map);
+
+            weatherPopups.push(popup)
+            allWaypoints.push({name: name, lat: lat, lon: lon});
+            updateURLWithWaypoints(allWaypoints)
+        }
+
+        function parseWaypointsFromURL() {
+            const params = new URLSearchParams(window.location.search);
+            const raw = params.get('points');
+            if (!raw) return [];
+            return raw.split('|').map(s => {
+                const [name, lat, lon] = s.split(':');
+                return { name: decodeURIComponent(name), lat: parseFloat(lat), lon: parseFloat(lon) };
+            });
+        }
+
+        function updateURLWithWaypoints(waypoints) {
+            const param = waypoints
+                .map(wp => `${encodeURIComponent(wp.name)}:${wp.lat.toFixed(5)}:${wp.lon.toFixed(5)}`)
+                .join('|');
+            const newUrl = `${window.location.pathname}?points=${param}`;
+            window.history.replaceState({}, '', newUrl);
+        }
+
+    </script>
+</body>
+
+</html>
