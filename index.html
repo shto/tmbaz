@@ -21,6 +21,58 @@
             word-wrap: break-word;
             overflow-wrap: break-word;
         }
+        .weather-overlay {
+            background: white;
+            color: #222;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: sans-serif;
+            font-size: 14px;
+            max-width: 260px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border: 1px solid #ddd;
+        }
+
+        .current-section {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .forecast-section {
+            display: flex;
+            overflow-x: auto;
+            gap: 6px;
+            padding-top: 4px;
+            border-top: 1px solid #eee;
+        }
+
+        .hour {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 40px;
+        }
+
+        .hour .time {
+            font-size: 12px;
+            color: #333;
+        }
+
+        .hour img {
+            width: 30px;
+            height: 30px;
+        }
+
+        .hour .rain {
+            font-size: 11px;
+            color: #337ab7;
+        }
+
+        .hour .temp {
+            font-size: 12px;
+            color: #555;
+        }
     </style>
 </head>
 
@@ -45,7 +97,7 @@
                 startIconUrl: null,
                 endIconUrl: null,
                 shadowUrl: null
-            }
+            },
         }).on('loaded', function (e) {
             map.fitBounds(e.target.getBounds());
         }).on('error', function (err) {
@@ -132,46 +184,14 @@
                 fetch(forecastURL).then(res => res.json())
             ])
                 .then(([current, forecast]) => {
-                    const nowTemp = current.main.temp;
-                    const nowDesc = current.weather[0].description;
-                    const nowIcon = current.weather[0].icon;
-
-                    // Find tonight's forecast: closest to 21:00 local time
-                    const tonightEntry = forecast.list.find(entry => {
-                        const hour = new Date(entry.dt * 1000).getHours();
-                        return hour === 20;
-                    });
-
-                    let tonightTemp = 'N/A';
-                    let tonightDesc = '';
-                    let tonightIcon = '';
-
-                    if (tonightEntry) {
-                        tonightTemp = tonightEntry.main.temp;
-                        tonightDesc = tonightEntry.weather[0].description;
-                        tonightIcon = tonightEntry.weather[0].icon;
-                    }
-
-                    addPopup(name, nowIcon, nowDesc, nowTemp, tonightIcon, tonightDesc, tonightTemp, lat, lon);
+                    addPopup(name, lat, lon, current, forecast);
                 })
                 .catch(err => console.error('Weather fetch error:', err));
 
         }
 
-        function addPopup(name, nowIcon, nowDesc, nowTemp, tonightIcon, tonightDesc, tonightTemp, lat, lon) {
-            const popupContent = `
-                    <div class="weather-popup">
-                    <strong>${name}</strong><br/><br/>
-                    <u>Now</u><br/>
-                    <img src="https://openweathermap.org/img/wn/${nowIcon}@2x.png" /><br/>
-                    ${nowDesc}<br/>
-                    ${nowTemp} °C<br/><br/>
-                    <u>Tonight (21:00)</u><br/>
-                    ${tonightIcon ? `<img src="https://openweathermap.org/img/wn/${tonightIcon}@2x.png" />` : ''}
-                    ${tonightDesc}<br/>
-                    ${tonightTemp} °C
-                    </div>
-                `;
+        function addPopup(name, lat, lon, current, forecast) {
+            const popupContent = buildWeatherOverlayFromWeatherAndForecast(current, forecast)
 
             let popup = L.popup({
                 closeOnClick: false,
@@ -203,6 +223,59 @@
                 .join('|');
             const newUrl = `${window.location.pathname}?points=${param}`;
             window.history.replaceState({}, '', newUrl);
+        }
+
+        function buildWeatherOverlayFromWeatherAndForecast(current, forecast) {
+            const currentTemp = Math.round(current.main.temp);
+            var minTemp = Math.round(current.main.temp_min || current.main.temp); // fallback
+
+            const now = new Date();
+            const next24Hours = [];
+            const msIn27Hours = 27 * 60 * 60 * 1000; // 86,400,000 ms
+
+            for (let i = 0; i < forecast.list.length; i++) {
+                const entry = forecast.list[i];
+                const dt = new Date(entry.dt * 1000);
+
+                if (dt - now >= msIn27Hours) {
+                    // more than 27 hours between them
+                    // don't continue, we only care about next 24-27 hours
+                    break;
+                }
+
+                if (dt > now) {
+                    let temp = entry.main.temp
+                    if (temp < minTemp) {
+                        minTemp = Math.round(temp);
+                    }
+
+                    next24Hours.push({
+                        time: `${dt.getHours()}h`,
+                        icon: entry.weather[0].icon,
+                        rain: entry.pop || (entry.rain?.['3h'] ? 1 : 0), // if no pop, estimate from rain volume
+                        temp: entry.main.temp
+                    });
+                }
+            }
+
+            const hourlyHTML = next24Hours.map(hour => `
+                <div class="hour">
+                <div class="time">${hour.time}</div>
+                <img src="https://openweathermap.org/img/wn/${hour.icon}.png" />
+                <div class="rain">${Math.round(hour.rain * 100)}%</div>
+                <div class="temp">${Math.round(hour.temp)}°C</div>
+                </div>
+            `).join('');
+
+            return `
+                <div class="weather-overlay">
+                <div class="current-section">
+                    <div class="temp-now">Now: ${currentTemp}°C</div>
+                    <div class="temp-min">Low: ${minTemp}°C</div>
+                </div>
+                <div class="forecast-section">${hourlyHTML}</div>
+                </div>
+            `;
         }
 
     </script>

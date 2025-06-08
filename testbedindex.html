@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Testbed</title>
+    <style>
+        .weather-overlay {
+            background: white;
+            color: #222;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: sans-serif;
+            font-size: 14px;
+            max-width: 260px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            border: 1px solid #ddd;
+        }
+
+        .current-section {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .forecast-section {
+            display: flex;
+            overflow-x: auto;
+            gap: 6px;
+            padding-top: 4px;
+            border-top: 1px solid #eee;
+        }
+
+        .hour {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 40px;
+        }
+
+        .hour .time {
+            font-size: 12px;
+            color: #333;
+        }
+
+        .hour img {
+            width: 30px;
+            height: 30px;
+        }
+
+        .hour .rain {
+            font-size: 11px;
+            color: #337ab7;
+        }
+
+        .hour .temp {
+            font-size: 12px;
+            color: #555;
+        }
+    </style>
+</head>
+
+<body>
+    <script type="module">
+        const currentURL = `https://l9r7k10f6h.execute-api.us-east-1.amazonaws.com/default/getWeatherData?lat=${45.8896}&lon=${6.7986}&type=weather`;
+        const forecastURL = `https://l9r7k10f6h.execute-api.us-east-1.amazonaws.com/default/getWeatherData?lat=${45.8896}&lon=${6.7986}&type=forecast`;
+
+        Promise.all([
+            fetch(currentURL).then(res => res.json()),
+            fetch(forecastURL).then(res => res.json())
+        ])
+        .then(([current, forecast]) => {
+            const html = buildWeatherOverlayFromWeatherAndForecast(current, forecast);
+            document.getElementById('overlay').innerHTML = html;
+        })
+        .catch(err => console.error('Weather fetch error:', err));
+
+        function buildWeatherOverlayFromWeatherAndForecast(current, forecast) {
+            const currentTemp = Math.round(current.main.temp);
+            var minTemp = Math.round(current.main.temp_min || current.main.temp); // fallback
+
+            const now = new Date();
+            const next24Hours = [];
+            const msIn27Hours = 27 * 60 * 60 * 1000; // 86,400,000 ms
+
+            for (let i = 0; i < forecast.list.length; i++) {
+                const entry = forecast.list[i];
+                const dt = new Date(entry.dt * 1000);
+
+                if (dt - now >= msIn27Hours) {
+                    // more than 27 hours between them
+                    // don't continue, we only care about next 24-27 hours
+                    break;
+                }
+
+                if (dt > now) {
+                    let temp = entry.main.temp
+                    if (temp < minTemp) {
+                        minTemp = Math.round(temp);
+                    }
+
+                    next24Hours.push({
+                        time: `${dt.getHours()}h`,
+                        icon: entry.weather[0].icon,
+                        rain: entry.pop || (entry.rain?.['3h'] ? 1 : 0), // if no pop, estimate from rain volume
+                        temp: entry.main.temp
+                    });
+                }
+            }
+
+            const hourlyHTML = next24Hours.map(hour => `
+                <div class="hour">
+                <div class="time">${hour.time}</div>
+                <img src="https://openweathermap.org/img/wn/${hour.icon}.png" />
+                <div class="rain">${Math.round(hour.rain * 100)}%</div>
+                <div class="temp">${Math.round(hour.temp)}°C</div>
+                </div>
+            `).join('');
+
+            return `
+                <div class="weather-overlay">
+                <div class="current-section">
+                    <div class="temp-now">Now: ${currentTemp}°C</div>
+                    <div class="temp-min">Low: ${minTemp}°C</div>
+                </div>
+                <div class="forecast-section">${hourlyHTML}</div>
+                </div>
+            `;
+        }
+
+
+    </script>
+
+    <div id="overlay">
+
+    </div>
+</body>
+
+</html>
